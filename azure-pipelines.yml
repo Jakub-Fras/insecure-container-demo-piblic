@@ -14,13 +14,20 @@ variables:
 steps:
   - checkout: self
 
-  - script: |
-      docker build -t $(fullImage) .
-    displayName: 'Build image'
-
+  # Install Docker + wget on the managed agent
   - script: |
       sudo apt-get update -y
-      sudo apt-get install -y wget
+      sudo apt-get install -y docker.io wget
+      docker --version
+    displayName: 'Install Docker and tools'
+
+  # Build the container image
+  - script: |
+      sudo docker build -t $(fullImage) .
+    displayName: 'Build image'
+
+  # Install Trivy and scan the image
+  - script: |
       wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.tar.gz
       tar zxvf trivy_Linux-64bit.tar.gz
       sudo mv trivy /usr/local/bin/
@@ -32,9 +39,10 @@ steps:
         $(fullImage)
     displayName: 'Scan image'
 
+  # Only runs if scan passed
   - script: |
-      docker run --rm -d --name test-container -p 8080:80 $(fullImage)
+      sudo docker run --rm -d --name test-container -p 8080:80 $(fullImage)
       sleep 5
-      docker stop test-container
+      sudo docker stop test-container
     displayName: 'Smoke test'
     condition: succeeded()
