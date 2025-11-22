@@ -26,11 +26,19 @@ steps:
       sudo docker build -t $(fullImage) .
     displayName: 'Build image'
 
-  # Install Trivy and scan the image
+  # Install Trivy via APT and scan the image  <<<<<< FIXED STEP
   - script: |
-      wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.tar.gz
-      tar zxvf trivy_Linux-64bit.tar.gz
-      sudo mv trivy /usr/local/bin/
+      sudo apt-get update -y
+      sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+      echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+
+      sudo apt-get update -y
+      sudo apt-get install -y trivy
+
+      trivy --version
+
       trivy image \
         --severity HIGH,CRITICAL \
         --vuln-type os,library \
@@ -44,5 +52,5 @@ steps:
       sudo docker run --rm -d --name test-container -p 8080:80 $(fullImage)
       sleep 5
       sudo docker stop test-container
-    displayName: 'Smoke test'
+    displayName: 'image is deployed only if Trvy has found no vulnrabilities'
     condition: succeeded()
