@@ -14,20 +14,20 @@ variables:
 steps:
   - checkout: self
 
+  # Install Docker + wget on the managed agent
   - script: |
       sudo apt-get update -y
-      sudo apt-get install -y docker.io wget
+      sudo apt-get install -y docker.io wget apt-transport-https gnupg lsb-release
       docker --version
     displayName: 'Install Docker and tools'
 
+  # Build the container image
   - script: |
       sudo docker build -t $(fullImage) .
     displayName: 'Build image'
 
+  # Install Trivy via APT and scan the image (note: sudo trivy)
   - script: |
-      sudo apt-get update -y
-      sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-
       wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
       echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
 
@@ -36,7 +36,7 @@ steps:
 
       trivy --version
 
-      trivy image \
+      sudo trivy image \
         --severity HIGH,CRITICAL \
         --vuln-type os,library \
         --ignore-unfixed \
@@ -44,6 +44,7 @@ steps:
         $(fullImage)
     displayName: 'Scan image'
 
+  # Only runs if scan passed
   - script: |
       sudo docker run --rm -d --name test-container -p 8080:80 $(fullImage)
       sleep 5
