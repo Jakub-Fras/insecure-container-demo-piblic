@@ -14,6 +14,25 @@ variables:
 steps:
   - checkout: self
 
+  # SBOM FROM SOURCE + SCA SCAN
+  - script: |
+      echo ">>> Installing Syft for SBOM generation"
+      curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      echo ">>> Generating SBOM from source (SPDX JSON)"
+      syft dir:. -o spdx-json=sbom-source.spdx.json
+
+      echo ">>> Installing Trivy for SBOM scan"
+      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+      echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+
+      sudo apt-get update -y
+      sudo apt-get install -y trivy
+
+      echo ">>> Scanning SBOM for vulnerabilities"
+      trivy sbom --exit-code 1 sbom-source.spdx.json
+    displayName: 'Generate + Scan SBOM (source)'
+
   # Install Docker + wget on the managed agent
   - script: |
       sudo apt-get update -y
@@ -26,15 +45,19 @@ steps:
       sudo docker build -t $(fullImage) .
     displayName: 'Build image'
 
-  # Install Trivy via APT and scan the image (note: sudo trivy)
+  # OPTIONAL SBOM FROM BULIT IMAGE 
   - script: |
-      wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-      echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+      echo ">>> Generating SBOM from built image"
+      syft $(fullImage) -o spdx-json=sbom-image.spdx.json
 
-      sudo apt-get update -y
-      sudo apt-get install -y trivy
+      echo ">>> Scanning SBOM (image) for vulnerabilities"
+      trivy sbom --exit-code 1 sbom-image.spdx.json
+    displayName: 'Generate + Scan SBOM (image)'
+    condition: succeeded()
 
-      trivy --version
+  # Install Trivy via APT and scan the image
+  - script: |
+      trivy --version || true
 
       sudo trivy image \
         --severity HIGH,CRITICAL \
