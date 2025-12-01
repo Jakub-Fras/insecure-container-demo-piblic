@@ -1,0 +1,60 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  name: 'managed-pool-agents'
+
+variables:
+  imageName: 'intentionally-vulnerable-demo-image'
+  imageTag: '$(Build.BuildId)'
+  fullImage: '$(imageName):$(imageTag)'
+
+  dockerfilePath: 'Dockerfile'
+  dockerfileFolder: '.'
+
+steps:
+- checkout: self
+
+- script: |
+    echo "==== Installing Tools ===="
+    sudo apt-get update -y
+    sudo apt-get install -y docker.io rpm wget curl jq
+
+    echo "==== Enabling & Starting Docker Daemon ===="
+    sudo systemctl enable docker || true
+    sudo systemctl start docker || true
+    sudo systemctl status docker --no-pager || true
+
+    echo "==== Docker version ===="
+    docker --version || sudo docker --version
+  displayName: 'Install Docker, RPM, and Start Docker Daemon'
+
+- script: |
+    echo "==== Downloading Defender for Cloud CLI ===="
+    curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+    chmod +x defender
+    ./defender --version
+  displayName: 'Install Defender CLI (optional)'
+
+- script: |
+    echo "==== Building Docker Image ===="
+    echo "Current directory: $(pwd)"
+    ls -la
+
+    sudo docker build -f $(dockerfilePath) -t $(fullImage) $(dockerfileFolder)
+
+    echo "Image built: $(fullImage)"
+    echo "Docker images:"
+    sudo docker images
+  displayName: 'Build Docker Image'
+
+# 🔹 Connector-based scan – no secrets needed
+- task: MicrosoftDefenderCLI@2
+  displayName: 'Scan Docker Image with Defender for Cloud CLI'
+  inputs:
+    command: 'run'
+    scanType: 'image'
+    imageName: '$(fullImage)'
+    break: true   # or false if you don't want to fail the build
